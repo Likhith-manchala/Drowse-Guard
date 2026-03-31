@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DrowseGuard – Driver Drowsiness Detection</title>
+  <meta name="description" content="Real-time AI-powered driver drowsiness detection using facial landmark analysis. Stay safe on the road with DrowseGuard." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Animated background -->
+  <div class="bg-grid"></div>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+
+  <!-- Alert Overlay -->
+  <div id="alertOverlay" class="alert-overlay hidden">
+    <div class="alert-box">
+      <div class="alert-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <h2>DROWSINESS DETECTED!</h2>
+      <p>You appear to be falling asleep. Please pull over safely and rest.</p>
+      <button id="dismissAlert" onclick="dismissAlert()">I'm Awake – Dismiss</button>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v4l3 3"/>
+          <path d="M8.5 8.5C9.5 7 10.7 6 12 6s2.5 1 3.5 2.5"/>
+        </svg>
+      </div>
+      <span class="logo-text">DrowseGuard</span>
+    </div>
+    <div class="header-badge">
+      <span class="pulse-dot" id="statusDot"></span>
+      <span id="statusText">Initializing...</span>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- Left Panel: Video Feed -->
+    <section class="video-panel">
+      <div class="panel-header">
+        <h2>Live Camera Feed</h2>
+        <div class="rec-badge">
+          <span class="rec-dot"></span> LIVE
+        </div>
+      </div>
+
+      <div class="video-container" id="videoContainer">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay" class="overlay-canvas"></canvas>
+
+        <!-- Corner decorators -->
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="corner bottom-right"></div>
+
+        <!-- Loading state -->
+        <div class="video-loading" id="videoLoading">
+          <div class="spinner"></div>
+          <p>Loading face detection models...</p>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button id="startBtn" class="btn btn-primary" onclick="startDetection()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Start Detection
+        </button>
+        <button id="stopBtn" class="btn btn-danger hidden" onclick="stopDetection()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="6" width="12" height="12" rx="1"/>
+          </svg>
+          Stop
+        </button>
+        <button id="resetBtn" class="btn btn-secondary" onclick="resetStats()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 .49-3.56"/>
+          </svg>
+          Reset
+        </button>
+      </div>
+    </section>
+
+    <!-- Right Panel: Stats & Info -->
+    <section class="stats-panel">
+
+      <!-- Drowsiness Level Gauge -->
+      <div class="card gauge-card">
+        <h3 class="card-title">Drowsiness Level</h3>
+        <div class="gauge-container">
+          <svg class="gauge-svg" viewBox="0 0 200 120">
+            <!-- Background arc -->
+            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e2a3a" stroke-width="16" stroke-linecap="round"/>
+            <!-- Colored arc -->
+            <path id="gaugeArc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gaugeGradient)" stroke-width="16" stroke-linecap="round"
+              stroke-dasharray="251" stroke-dashoffset="251"/>
+            <!-- Gradient -->
+            <defs>
+              <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00d4aa"/>
+                <stop offset="50%" stop-color="#f59e0b"/>
+                <stop offset="100%" stop-color="#ef4444"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="gauge-value">
+            <span id="gaugePercent">0</span>
+            <small>%</small>
+          </div>
+          <div class="gauge-label" id="gaugeLabel">Alert</div>
+        </div>
+      </div>
+
+      <!-- EAR Metric -->
+      <div class="card metric-card">
+        <div class="metric-icon eye-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-label">Eye Aspect Ratio (EAR)</span>
+          <span class="metric-value" id="earValue">—</span>
+        </div>
+        <div class="metric-bar-container">
+          <div class="metric-bar" id="earBar" style="width: 0%"></div>
+        </div>
+        <div class="metric-sub" id="earStatus">Waiting for detection...</div>
+      </div>
+
+      <!-- Blink Stats -->
+      <div class="card metric-card">
+        <div class="metric-icon blink-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-label">Eye Closure Duration</span>
+          <span class="metric-value" id="closureDuration">0.0s</span>
+        </div>
+        <div class="metric-bar-container">
+          <div class="metric-bar danger-bar" id="closureBar" style="width: 0%"></div>
+        </div>
+        <div class="metric-sub" id="closureStatus">Eyes open</div>
+      </div>
+
+      <!-- Blink counter -->
+      <div class="card stats-row">
+        <div class="stat-box">
+          <span class="stat-num" id="blinkCount">0</span>
+          <span class="stat-label">Blinks</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-box">
+          <span class="stat-num" id="yawnCount">0</span>
+          <span class="stat-label">Slow Blinks</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-box">
+          <span class="stat-num" id="alertCount">0</span>
+          <span class="stat-label">Alerts</span>
+        </div>
+      </div>
+
+      <!-- Session Info -->
+      <div class="card session-card">
+        <div class="session-item">
+          <span class="session-label">Session Duration</span>
+          <span class="session-value" id="sessionTime">00:00</span>
+        </div>
+        <div class="session-item">
+          <span class="session-label">Detection FPS</span>
+          <span class="session-value" id="fpsValue">—</span>
+        </div>
+        <div class="session-item">
+          <span class="session-label">Face Detected</span>
+          <span class="session-value" id="faceDetected">No</span>
+        </div>
+        <div class="session-item">
+          <span class="session-label">Threshold (EAR)</span>
+          <span class="session-value">0.25</span>
+        </div>
+      </div>
+
+      <!-- Sensitivity Slider -->
+      <div class="card slider-card">
+        <label class="slider-label" for="sensitivitySlider">
+          Alert Sensitivity
+          <span id="sensitivityVal">Medium</span>
+        </label>
+        <input type="range" id="sensitivitySlider" min="1" max="3" step="1" value="2" class="slider" oninput="updateSensitivity(this.value)"/>
+        <div class="slider-ticks">
+          <span>Low</span>
+          <span>Medium</span>
+          <span>High</span>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Info Footer -->
+  <footer class="footer">
+    <p>🛡️ DrowseGuard uses on-device AI — your camera feed never leaves your device.</p>
+  </footer>
+
+  <!-- face-api.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
