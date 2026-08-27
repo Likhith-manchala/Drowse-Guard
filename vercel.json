@@ -1,13 +1,4 @@
 {
-  "buildCommand": "echo 'Static site - no build needed'",
-  "devCommand": "echo 'Static site - no dev build needed'",
-  "public": ".",
   "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "trailingSlash": false
 }
