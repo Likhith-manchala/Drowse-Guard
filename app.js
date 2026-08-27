@@ -116,6 +116,24 @@ function resetEvaluation() {
   updateEvaluation();
 }
 
+function updateClosureMetrics(closed) {
+  const now = Date.now();
+  if (closed && !wasEyeClosed) eyeClosedStart = now;
+  if (!closed && wasEyeClosed && eyeClosedStart) {
+    const duration = (now - eyeClosedStart) / 1000;
+    if (duration >= 0.08 && duration < 1.5) blinkCount++;
+    if (duration >= 0.5) slowBlinkCount++;
+    document.getElementById('blinkCount').textContent = blinkCount;
+    document.getElementById('yawnCount').textContent = slowBlinkCount;
+    eyeClosedStart = null;
+  }
+  wasEyeClosed = closed;
+  const currentDuration = closed && eyeClosedStart ? (now - eyeClosedStart) / 1000 : 0;
+  document.getElementById('closureDuration').textContent = `${currentDuration.toFixed(1)}s`;
+  document.getElementById('closureBar').style.width = Math.min(100, (currentDuration / 1.5) * 100) + '%';
+  document.getElementById('closureStatus').textContent = closed ? 'Eyes closed' : 'Eyes open';
+}
+
 function startDetection() {
   if (isRunning) return;
   isRunning = true;
@@ -153,6 +171,8 @@ function resetStats() {
   alertCount = 0;
   drowsinessScore = 0;
   earBuffer = [];
+  eyeClosedStart = null;
+  wasEyeClosed = false;
   updateGauge(0);
   resetEvaluation();
   document.getElementById('blinkCount').textContent = '0';
@@ -217,6 +237,7 @@ async function detectRealFrame() {
       document.getElementById('earBar').style.width = Math.min(100, (smoothEAR / 0.45) * 100) + '%';
       updateSparkline(smoothEAR);
       const closed = smoothEAR < sens.ear;
+      updateClosureMetrics(closed);
       if (closed) {
         drowsinessScore = Math.min(100, drowsinessScore + 2);
         closedFrames++;
