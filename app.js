@@ -35,6 +35,51 @@ let currentFps       = 0;
 let sens             = SENSITIVITY[2];
 let modelsLoaded     = false;
 let evaluation = { frames: 0, faceFrames: 0, earTotal: 0 };
+let logs             = [];
+let earHistory       = [];
+let voiceSettings    = { enabled: false, volume: 0.8, level: 3 };
+let voiceTimer       = null;
+let currentVoiceLevel = 0;
+const voiceMessages   = {
+  1: 'Please stay alert.',
+  2: 'Drowsiness detected. Please take a break.',
+  3: 'Warning. Pull over safely and rest.'
+};
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+
+function openSettings() {
+  if (document.getElementById('settingsModal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'settingsModal';
+  modal.className = 'settings-modal';
+  modal.innerHTML = `
+    <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <h3 id="settingsTitle">Detection Settings</h3>
+      <label for="settingsSensitivity">Alert sensitivity</label>
+      <select id="settingsSensitivity">
+        <option value="1">Low</option>
+        <option value="2">Medium</option>
+        <option value="3">High</option>
+      </select>
+      <label for="settingsEar">EAR threshold</label>
+      <input id="settingsEar" type="number" min="0.1" max="0.5" step="0.01" value="${sens.ear}">
+      <label><input id="settingsVoiceEnabled" type="checkbox" ${voiceSettings.enabled ? 'checked' : ''}> Voice alerts</label>
+      <label for="settingsVoiceVolume">Voice volume</label>
+      <input id="settingsVoiceVolume" type="range" min="0" max="1" step="0.1" value="${voiceSettings.volume}">
+      <label for="settingsVoiceLevel">Voice escalation level</label>
+      <select id="settingsVoiceLevel">
+        <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+      </select>
+      <div class="settings-actions">
+        <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('settingsSensitivity').value = Object.keys(SENSITIVITY).find(key => SENSITIVITY[key] === sens) || '2';
+  document.getElementById('settingsVoiceLevel').value = voiceSettings.level;
+}
 
 function recordEvaluationSample(ear, faceDetected) {
   evaluation.frames++;
