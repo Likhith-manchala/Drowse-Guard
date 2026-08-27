@@ -483,3 +483,13 @@ function updateSensitivity(val) {
   const labels = { 1: 'Low', 2: 'Medium', 3: 'High' };
   document.getElementById('sensitivityVal').textContent = labels[val];
 }
+
+// The current browser experience uses the local demo loop, so no model download is needed.
+function initializeApp() {
+  loadSettings();
+  hideLoading();
+  setStatus('Ready', false);
+  updateEvaluation();
+}
+
+initializeApp();
