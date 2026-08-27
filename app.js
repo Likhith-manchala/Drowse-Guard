@@ -122,16 +122,20 @@ function startDetection() {
   sessionStart = Date.now();
   fpsFrames = 0;
   fpsLastTime = performance.now();
-  setStatus('Detection active', true);
+  setStatus('Loading detector...', true);
   document.getElementById('startBtn').classList.add('hidden');
   document.getElementById('stopBtn').classList.remove('hidden');
-  hideLoading();
   sessionTimer = setInterval(updateSessionTime, 1000);
-  runSimulatedLoop();
+  startRealDetection();
 }
 
 function stopDetection() {
   isRunning = false;
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+  modelsLoaded = false;
   if (animFrameId) cancelAnimationFrame(animFrameId);
   if (sessionTimer) clearInterval(sessionTimer);
   animFrameId = null;
@@ -158,6 +162,86 @@ function resetStats() {
   document.getElementById('fpsValue').textContent = '--';
   document.getElementById('faceDetected').textContent = 'No';
   document.getElementById('earValue').textContent = '--';
+}
+
+async function startRealDetection() {
+  try {
+    if (!window.faceapi) throw new Error('Face detection library unavailable');
+    document.getElementById('loadingMessage').textContent = 'Loading lightweight face models...';
+    const modelLoad = Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL)
+    ]);
+    const timeout = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error('Model download timed out')), 15000);
+    });
+    await Promise.race([modelLoad, timeout]);
+    modelsLoaded = true;
+
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access is unavailable');
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await video.play();
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    hideLoading();
+    setStatus('Detection active', true);
+    detectRealFrame();
+  } catch (error) {
+    console.error('Real face detection could not start:', error);
+    modelsLoaded = false;
+    stopDetection();
+    document.getElementById('loadingMessage').textContent = `${error.message}. Check network/camera permissions and try again.`;
+    document.getElementById('videoLoading').classList.remove('hidden');
+    setStatus('Detection unavailable', false);
+  }
+}
+
+async function detectRealFrame() {
+  if (!isRunning || !modelsLoaded) return;
+  const video = document.getElementById('video');
+  try {
+    const result = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })).withFaceLandmarks(true);
+    if (result) {
+      const landmarks = result.landmarks;
+      const leftEye = landmarks.getLeftEye();
+      const rightEye = landmarks.getRightEye();
+      const smoothEAR = (computeEAR(leftEye) + computeEAR(rightEye)) / 2;
+      recordEvaluationSample(smoothEAR, true);
+      document.getElementById('faceDetected').textContent = 'Yes';
+      document.getElementById('earValue').textContent = smoothEAR.toFixed(3);
+      document.getElementById('earBar').style.width = Math.min(100, (smoothEAR / 0.45) * 100) + '%';
+      updateSparkline(smoothEAR);
+      const closed = smoothEAR < sens.ear;
+      if (closed) {
+        drowsinessScore = Math.min(100, drowsinessScore + 2);
+        closedFrames++;
+        document.getElementById('earStatus').textContent = 'Eyes closing';
+      } else {
+        drowsinessScore = Math.max(0, drowsinessScore - 1);
+        closedFrames = 0;
+        document.getElementById('earStatus').textContent = 'Eyes open';
+      }
+      drawFaceMesh(landmarks, result.detection.box);
+      if (closedFrames >= sens.frames) triggerAlert();
+      updateGauge(drowsinessScore);
+      applyDrowsyState(drowsinessScore);
+    } else {
+      recordEvaluationSample(0, false);
+      document.getElementById('faceDetected').textContent = 'No';
+      document.getElementById('earValue').textContent = '--';
+      document.getElementById('earStatus').textContent = 'No face detected';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  } catch (error) {
+    console.warn('Detection frame failed:', error);
+  }
+  calcFPS();
+  animFrameId = requestAnimationFrame(detectRealFrame);
 }
 
 function updateSessionTime() {
