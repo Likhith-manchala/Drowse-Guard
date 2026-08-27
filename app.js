@@ -34,187 +34,218 @@ let fpsLastTime      = performance.now();
 let currentFps       = 0;
 let sens             = SENSITIVITY[2];
 let modelsLoaded     = false;
+let evaluation = { frames: 0, faceFrames: 0, earTotal: 0 };
 
-// DOM refs
-const video       = document.getElementById('video');
-const canvas      = document.getElementById('overlay');
-const ctx         = canvas.getContext('2d');
-
-// ── Model Loading ─────────────────────────────────────
-window.addEventListener('DOMContentLoaded', loadModels);
-
-async function loadModels() {
-  try {
-    setStatus('Loading AI models...', false);
-    // Wait for face-api to be available (loaded via defer)
-    await waitForFaceApi();
-
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
-
-    modelsLoaded = true;
-    setStatus('Ready – Click Start', false);
-    hideLoading();
-    document.getElementById('startBtn').disabled = false;
-  } catch (err) {
-    console.error('Model load error:', err);
-    // Fallback: use simulated mode for demo
-    modelsLoaded = false;
-    setStatus('Demo Mode (No Camera)', false);
-    hideLoading();
+function recordEvaluationSample(ear, faceDetected) {
+  evaluation.frames++;
+  if (faceDetected) {
+    evaluation.faceFrames++;
+    evaluation.earTotal += ear;
   }
+  updateEvaluation();
 }
 
-function waitForFaceApi() {
-  return new Promise((resolve) => {
-    const check = () => {
-      if (window.faceapi) resolve();
-      else setTimeout(check, 100);
-    };
-    check();
-  });
+function updateEvaluation() {
+  const hasSamples = evaluation.frames > 0;
+  const coverage = hasSamples ? (evaluation.faceFrames / evaluation.frames) * 100 : 0;
+  const averageEar = evaluation.faceFrames ? evaluation.earTotal / evaluation.faceFrames : 0;
+  const elapsedMinutes = sessionStart ? Math.max((Date.now() - sessionStart) / 60000, 1 / 60) : 0;
+  const alertsPerMinute = elapsedMinutes ? alertCount / elapsedMinutes : 0;
+  const score = hasSamples ? Math.round((coverage * 0.7) + Math.min(currentFps / 30, 1) * 30) : 0;
+
+  document.getElementById('faceCoverage').textContent = hasSamples ? `${coverage.toFixed(1)}%` : '--';
+  document.getElementById('averageEar').textContent = evaluation.faceFrames ? averageEar.toFixed(3) : '--';
+  document.getElementById('alertRate').textContent = hasSamples ? alertsPerMinute.toFixed(1) : '--';
+  document.getElementById('framesSampled').textContent = evaluation.frames;
+  document.getElementById('evaluationScore').textContent = hasSamples ? `${score}/100` : '--';
+
+  const status = document.getElementById('evaluationStatus');
+  if (!hasSamples) status.textContent = 'Start detection to evaluate performance';
+  else if (coverage >= 90 && currentFps >= 20) status.textContent = 'Healthy: stable face coverage and frame rate';
+  else if (coverage >= 70) status.textContent = 'Fair: improve lighting or camera position';
+  else status.textContent = 'Needs attention: face coverage is low';
 }
 
-// ── Start / Stop ──────────────────────────────────────
-async function startDetection() {
+function resetEvaluation() {
+  evaluation = { frames: 0, faceFrames: 0, earTotal: 0 };
+  updateEvaluation();
+}
+
+function startDetection() {
   if (isRunning) return;
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: false,
-    });
-    video.srcObject = stream;
-    await new Promise(r => video.onloadedmetadata = r);
-    video.play();
-  } catch (err) {
-    alert('Camera access denied. Please allow camera permissions.');
-    return;
-  }
-
   isRunning = true;
   sessionStart = Date.now();
-  sessionTimer = setInterval(updateSessionTime, 1000);
-
+  fpsFrames = 0;
+  fpsLastTime = performance.now();
+  setStatus('Detection active', true);
   document.getElementById('startBtn').classList.add('hidden');
   document.getElementById('stopBtn').classList.remove('hidden');
-  setStatus('Active – Monitoring', true);
-
-  if (modelsLoaded) {
-    runDetectionLoop();
-  } else {
-    runSimulatedLoop();
-  }
+  hideLoading();
+  sessionTimer = setInterval(updateSessionTime, 1000);
+  runSimulatedLoop();
 }
 
 function stopDetection() {
   isRunning = false;
   if (animFrameId) cancelAnimationFrame(animFrameId);
   if (sessionTimer) clearInterval(sessionTimer);
-  if (stream) stream.getTracks().forEach(t => t.stop());
-
+  animFrameId = null;
+  sessionTimer = null;
+  setStatus('Detection stopped', false);
   document.getElementById('startBtn').classList.remove('hidden');
   document.getElementById('stopBtn').classList.add('hidden');
-  setStatus('Stopped', false);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  document.body.classList.remove('drowsy-warn', 'drowsy-danger');
-  document.getElementById('faceDetected').textContent = 'No';
-  document.getElementById('statusDot').className = 'pulse-dot';
 }
 
 function resetStats() {
-  blinkCount = 0; slowBlinkCount = 0; alertCount = 0;
-  closedFrames = 0; drowsinessScore = 0; earBuffer = [];
-  updateStatCards(0, 0, '—', '—');
+  stopDetection();
+  sessionStart = null;
+  blinkCount = 0;
+  slowBlinkCount = 0;
+  alertCount = 0;
+  drowsinessScore = 0;
+  earBuffer = [];
   updateGauge(0);
+  resetEvaluation();
   document.getElementById('blinkCount').textContent = '0';
-  document.getElementById('yawnCount').textContent  = '0';
+  document.getElementById('yawnCount').textContent = '0';
   document.getElementById('alertCount').textContent = '0';
+  document.getElementById('sessionTime').textContent = '00:00';
+  document.getElementById('fpsValue').textContent = '--';
+  document.getElementById('faceDetected').textContent = 'No';
+  document.getElementById('earValue').textContent = '--';
 }
 
-// ── Detection Loop ────────────────────────────────────
-async function runDetectionLoop() {
-  if (!isRunning) return;
+function updateSessionTime() {
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('sessionTime').textContent = `${m}:${s}`;
+}
 
-  canvas.width  = video.videoWidth  || 640;
-  canvas.height = video.videoHeight || 480;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+// -------------------------
+// Logging and persistence
+// -------------------------
+function logEvent(type, data = {}) {
   try {
-    const det = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
-      .withFaceLandmarks(true);
-
-    if (det) {
-      document.getElementById('faceDetected').textContent = 'Yes ✓';
-      processLandmarks(det.landmarks);
-      drawFaceMesh(det.landmarks, det.detection.box);
-    } else {
-      document.getElementById('faceDetected').textContent = 'No';
-      decayDrowsiness();
-    }
-  } catch(e) { /* skip frame */ }
-
-  calcFPS();
-  animFrameId = requestAnimationFrame(runDetectionLoop);
+    logs.push(Object.assign({ time: new Date().toISOString(), type }, data));
+  } catch (e) { /* ignore */ }
 }
 
-// ── Landmark Processing ───────────────────────────────
-function processLandmarks(landmarks) {
-  const leftEye  = landmarks.getLeftEye();
-  const rightEye = landmarks.getRightEye();
+function downloadLogs() {
+  if (!logs.length) { alert('No logs to export'); return; }
+  const keys = Object.keys(logs[0]);
+  const rows = logs.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','));
+  const csv = [keys.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'drowseguard_logs.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
 
-  const earLeft  = computeEAR(leftEye);
-  const earRight = computeEAR(rightEye);
-  const ear      = (earLeft + earRight) / 2;
+function clearLogs() {
+  if (!confirm('Clear all logs?')) return;
+  logs.length = 0;
+  alert('Logs cleared');
+}
 
-  // Smooth EAR
-  earBuffer.push(ear);
-  if (earBuffer.length > 8) earBuffer.shift();
-  const smoothEAR = earBuffer.reduce((a,b) => a+b) / earBuffer.length;
+ 
 
-  // Update EAR display
-  document.getElementById('earValue').textContent = smoothEAR.toFixed(3);
-  const earPct = Math.min(100, (smoothEAR / 0.45) * 100);
-  document.getElementById('earBar').style.width = earPct + '%';
+function closeSettings() {
+  const m = document.getElementById('settingsModal');
+  if (m) m.parentElement.remove();
+}
 
-  const eyesClosed = smoothEAR < sens.ear;
+function saveSettings() {
+  const val = document.getElementById('settingsSensitivity').value;
+  const earVal = document.getElementById('settingsEar').value;
+  sens = SENSITIVITY[val];
+  if (earVal) sens.ear = parseFloat(earVal);
+  // voice settings
+  const vEnabled = document.getElementById('settingsVoiceEnabled').checked;
+  const vVolume = parseFloat(document.getElementById('settingsVoiceVolume').value || 0.8);
+  const vLevel  = parseInt(document.getElementById('settingsVoiceLevel').value || 3, 10);
+  voiceSettings = { enabled: vEnabled, volume: vVolume, level: vLevel };
+  localStorage.setItem('drowseguard_sens', JSON.stringify({ val, ear: earVal }));
+  localStorage.setItem('drowseguard_voice', JSON.stringify(voiceSettings));
+  closeSettings();
+}
 
-  if (eyesClosed) {
-    closedFrames++;
-    if (!wasEyeClosed) { eyeClosedStart = Date.now(); }
-    wasEyeClosed = true;
-
-    const dur = (Date.now() - eyeClosedStart) / 1000;
-    document.getElementById('closureDuration').textContent = dur.toFixed(1) + 's';
-    const clPct = Math.min(100, (dur / 3) * 100);
-    document.getElementById('closureBar').style.width = clPct + '%';
-    document.getElementById('closureStatus').textContent = dur > 1 ? '⚠️ Extended closure!' : 'Closing...';
-    document.getElementById('earStatus').textContent = '⚠️ Eyes closing';
-
-    drowsinessScore = Math.min(100, drowsinessScore + 3);
-  } else {
-    if (wasEyeClosed) {
-      const dur = (Date.now() - eyeClosedStart) / 1000;
-      if (dur < 0.4) blinkCount++;
-      else slowBlinkCount++;
-      document.getElementById('blinkCount').textContent = blinkCount;
-      document.getElementById('yawnCount').textContent  = slowBlinkCount;
-      document.getElementById('closureDuration').textContent = '0.0s';
-      document.getElementById('closureBar').style.width = '0%';
-      document.getElementById('closureStatus').textContent = 'Eyes open';
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('drowseguard_sens'));
+    if (s) {
+      sens = SENSITIVITY[s.val || 2];
+      if (s.ear) sens.ear = parseFloat(s.ear);
+      document.getElementById('sensitivitySlider').value = s.val || 2;
+      document.getElementById('sensitivityVal').textContent = SENSITIVITY[s.val || 2].label;
     }
-    wasEyeClosed = false; closedFrames = 0;
-    document.getElementById('earStatus').textContent = '✓ Eyes open';
-    drowsinessScore = Math.max(0, drowsinessScore - 1.5);
-  }
+    const vs = JSON.parse(localStorage.getItem('drowseguard_voice'));
+    if (vs) voiceSettings = Object.assign(voiceSettings, vs);
+  } catch (e) { /* ignore */ }
+}
 
-  updateGauge(drowsinessScore);
-  applyDrowsyState(drowsinessScore);
+// -------------------------
+// Voice escalation
+// -------------------------
+function speak(text, opts = {}) {
+  if (!window.speechSynthesis) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.volume = opts.volume ?? voiceSettings.volume;
+    u.rate = opts.rate || 1.0;
+    u.pitch = opts.pitch || 1.0;
+    window.speechSynthesis.speak(u);
+  } catch (e) { /* ignore */ }
+}
 
-  if (closedFrames >= sens.frames) {
-    triggerAlert();
+function startVoiceEscalation() {
+  if (!voiceSettings.enabled) return;
+  stopVoiceEscalation();
+  currentVoiceLevel = 1;
+  speak(voiceMessages[currentVoiceLevel], { volume: voiceSettings.volume });
+  voiceTimer = setTimeout(() => escalateVoice(), 4000);
+}
+
+function escalateVoice() {
+  if (!voiceSettings.enabled) return;
+  currentVoiceLevel = Math.min(voiceSettings.level, currentVoiceLevel + 1);
+  const msg = voiceMessages[currentVoiceLevel] || voiceMessages[voiceSettings.level];
+  // increase urgency via rate/pitch for higher levels
+  const opts = { volume: voiceSettings.volume, rate: 1 + (currentVoiceLevel - 1) * 0.12, pitch: 1 + (currentVoiceLevel - 1) * 0.08 };
+  speak(msg, opts);
+  voiceTimer = setTimeout(() => escalateVoice(), 5000);
+}
+
+function stopVoiceEscalation() {
+  if (voiceTimer) { clearTimeout(voiceTimer); voiceTimer = null; }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  currentVoiceLevel = 0;
+}
+
+// -------------------------
+// EAR sparkline
+// -------------------------
+function updateSparkline(ear) {
+  const c = document.getElementById('earSpark');
+  if (!c) return;
+  const ctx2 = c.getContext('2d');
+  earHistory.push(ear);
+  if (earHistory.length > 100) earHistory.shift();
+  const w = c.width, h = c.height;
+  ctx2.clearRect(0,0,w,h);
+  // background
+  ctx2.fillStyle = 'rgba(255,255,255,0.02)'; ctx2.fillRect(0,0,w,h);
+  // path
+  ctx2.beginPath();
+  for (let i=0;i<earHistory.length;i++) {
+    const x = (i/(earHistory.length-1 || 1))*w;
+    const v = earHistory[i];
+    const y = h - (v/0.45)*h;
+    if (i===0) ctx2.moveTo(x,y); else ctx2.lineTo(x,y);
   }
+  ctx2.strokeStyle = 'rgba(0,212,170,0.9)'; ctx2.lineWidth = 2; ctx2.stroke();
 }
 
 // Eye Aspect Ratio calculation
@@ -281,6 +312,7 @@ function runSimulatedLoop() {
     const earPct = Math.min(100, (smoothEAR / 0.45) * 100);
     document.getElementById('earBar').style.width = earPct + '%';
     document.getElementById('faceDetected').textContent = 'Sim ✓';
+    recordEvaluationSample(smoothEAR, true);
 
     const closed = smoothEAR < sens.ear;
     if (closed) {
@@ -339,17 +371,21 @@ function triggerAlert() {
   alertCount++;
   document.getElementById('alertCount').textContent = alertCount;
 
+  logEvent('alert', { score: drowsinessScore, closedFrames });
+
   // Sound alert
   playAlertSound();
 
   // Show overlay
   document.getElementById('alertOverlay').classList.remove('hidden');
   closedFrames = 0;
+  startVoiceEscalation();
 }
 
 function dismissAlert() {
   document.getElementById('alertOverlay').classList.add('hidden');
   drowsinessScore = Math.max(0, drowsinessScore - 30);
+  stopVoiceEscalation();
 }
 
 function playAlertSound() {
@@ -384,12 +420,6 @@ function hideLoading() {
   document.getElementById('videoLoading').classList.add('hidden');
 }
 
-function updateSessionTime() {
-  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
-  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
-  const s = String(elapsed % 60).padStart(2, '0');
-  document.getElementById('sessionTime').textContent = `${m}:${s}`;
-}
 
 function calcFPS() {
   fpsFrames++;
@@ -399,6 +429,7 @@ function calcFPS() {
     fpsFrames  = 0;
     fpsLastTime = now;
     document.getElementById('fpsValue').textContent = currentFps + ' fps';
+    updateEvaluation();
   }
 }
 

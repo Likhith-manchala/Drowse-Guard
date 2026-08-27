@@ -49,6 +49,9 @@
       <span class="pulse-dot" id="statusDot"></span>
       <span id="statusText">Initializing...</span>
     </div>
+    <div class="header-actions">
+      <button id="settingsBtn" class="btn btn-secondary" onclick="openSettings()">Settings</button>
+    </div>
   </header>
 
   <!-- Main Content -->
@@ -130,6 +133,7 @@
             <span id="gaugePercent">0</span>
             <small>%</small>
           </div>
+          <canvas id="earSpark" width="200" height="40" style="display:block; margin-top:8px;"></canvas>
           <div class="gauge-label" id="gaugeLabel">Alert</div>
         </div>
       </div>
@@ -150,6 +154,14 @@
           <div class="metric-bar" id="earBar" style="width: 0%"></div>
         </div>
         <div class="metric-sub" id="earStatus">Waiting for detection...</div>
+      </div>
+
+      <!-- Export / Logs -->
+      <div class="card">
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="downloadLogs()">Export Logs (CSV)</button>
+          <button class="btn btn-secondary" onclick="clearLogs()">Clear Logs</button>
+        </div>
       </div>
 
       <!-- Blink Stats -->
@@ -207,6 +219,36 @@
           <span class="session-label">Threshold (EAR)</span>
           <span class="session-value">0.25</span>
         </div>
+      </div>
+
+      <!-- Performance Evaluation -->
+      <div class="card evaluation-card">
+        <div class="evaluation-heading">
+          <div>
+            <h3 class="card-title">Performance Evaluation</h3>
+            <p class="evaluation-note">Live operational quality for this session</p>
+          </div>
+          <span class="evaluation-score" id="evaluationScore">--</span>
+        </div>
+        <div class="evaluation-grid">
+          <div class="evaluation-metric">
+            <span class="evaluation-label">Face coverage</span>
+            <strong id="faceCoverage">--</strong>
+          </div>
+          <div class="evaluation-metric">
+            <span class="evaluation-label">Avg. EAR</span>
+            <strong id="averageEar">--</strong>
+          </div>
+          <div class="evaluation-metric">
+            <span class="evaluation-label">Alerts / min</span>
+            <strong id="alertRate">--</strong>
+          </div>
+          <div class="evaluation-metric">
+            <span class="evaluation-label">Frames sampled</span>
+            <strong id="framesSampled">0</strong>
+          </div>
+        </div>
+        <div class="evaluation-status" id="evaluationStatus">Start detection to evaluate performance</div>
       </div>
 
       <!-- Sensitivity Slider -->

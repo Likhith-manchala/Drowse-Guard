@@ -124,6 +124,21 @@ body {
   padding: 8px 18px;
   font-size: 0.85rem; font-weight: 500; color: var(--muted);
 }
+.header-actions { display:flex; align-items:center; gap:12px; }
+.settings-modal {
+  position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; z-index:1100;
+  background: rgba(6,13,24,0.6); backdrop-filter: blur(6px);
+}
+.settings-card {
+  background: var(--card-bg); border: 1px solid var(--border); padding: 20px; border-radius: 12px; width: 320px;
+  display:flex; flex-direction:column; gap:8px;
+}
+.settings-card h3 { margin-bottom:8px; font-family: 'Outfit', sans-serif; }
+.settings-card label { font-size:0.85rem; color:var(--muted); }
+.settings-card input, .settings-card select { padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:var(--text); }
+
+/* small adjustments for sparkline */
+#earSpark { border-radius:8px; background: rgba(255,255,255,0.02); width:100%; }
 .pulse-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--muted);
@@ -305,6 +320,17 @@ body {
 .session-item { display: flex; justify-content: space-between; align-items: center; }
 .session-label { font-size: 0.8rem; color: var(--muted); }
 .session-value { font-size: 0.85rem; font-weight: 600; color: var(--text); font-family: 'Outfit', sans-serif; }
+
+/* Performance Evaluation */
+.evaluation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.evaluation-heading .card-title { margin-bottom: 4px; }
+.evaluation-note { color: var(--muted); font-size: 0.7rem; }
+.evaluation-score { color: var(--accent); font-family: 'Outfit', sans-serif; font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
+.evaluation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.evaluation-metric { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+.evaluation-label { display: block; color: var(--muted); font-size: 0.68rem; margin-bottom: 5px; }
+.evaluation-metric strong { color: var(--text); font-family: 'Outfit', sans-serif; font-size: 1rem; }
+.evaluation-status { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.72rem; line-height: 1.4; margin-top: 12px; padding-top: 10px; }
 
 /* Slider */
 .slider-card {}
